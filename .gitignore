@@ -1,0 +1,6 @@
+models/menagerie/
+ckpt/
+data/*.npz
+logs/
+__pycache__/
+*.pyc

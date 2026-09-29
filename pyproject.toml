@@ -1,0 +1,16 @@
+[project]
+name = "assembly-lab"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["mujoco>=3.2", "numpy", "torch>=2.4", "lerobot==0.4.4", "imageio[ffmpeg]"]
+
+[tool.ruff]
+line-length = 125
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E402", "UP031"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/build_space.py" = ["E501"]  # HTML template lines
+"scripts/make_results.py" = ["E501"]  # Markdown table rows
