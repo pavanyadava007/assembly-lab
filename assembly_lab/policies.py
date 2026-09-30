@@ -109,7 +109,7 @@ class Runner:
         self.norm = Normalizer(**meta["norm"])
         self.device = device
         if self.kind == "bc":
-            self.model = MLPPolicy(23 if self.use_ft else 17)
+            self.model = MLPPolicy(meta.get("obs_dim", 23 if self.use_ft else 17))
         else:
             self.model, _ = make_lerobot(self.kind, self.use_ft, device)
         self.model.load_state_dict(torch.load(ckpt_dir / "model.pt", map_location=device))

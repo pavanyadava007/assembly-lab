@@ -42,9 +42,17 @@ class Expert:
         # command relative to the internal target so servo lag is compensated by the feedback on the true pose
         err = np.asarray(target_xyz) - tp
         a = np.zeros(5)
-        a[:3] = np.clip(gain * err / MAX_DPOS, -max_speed, max_speed)
-        if target_yaw is not None:
-            a[3] = np.clip(_fold(target_yaw - ty) / MAX_DYAW, -1, 1)
+        if env.control == "impedance":
+            # the compliant arm lags its commanded point: steer the commanded point, plus a small correction on
+            # the real tool error (adding the full tool error every step winds up into an oscillation)
+            cmd = (np.asarray(target_xyz) - env.target_pos) + 0.15 * err
+            a[:3] = np.clip(gain * cmd / MAX_DPOS, -max_speed, max_speed)
+            if target_yaw is not None:
+                a[3] = np.clip((_fold(target_yaw - env.target_yaw) + 0.15 * _fold(target_yaw - ty)) / MAX_DYAW, -1, 1)
+        else:
+            a[:3] = np.clip(gain * err / MAX_DPOS, -max_speed, max_speed)
+            if target_yaw is not None:
+                a[3] = np.clip(_fold(target_yaw - ty) / MAX_DYAW, -1, 1)
         return a, np.linalg.norm(err)
 
     def act(self, obs):

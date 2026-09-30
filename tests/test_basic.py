@@ -36,3 +36,15 @@ def test_wilson_bounds():
 
     lo, hi = wilson(179, 200)
     assert round(lo, 4) == 0.8448 and round(hi, 4) == 0.9303
+
+
+def test_impedance_holds_pose_and_expert_succeeds():
+    env = AssemblyEnv(control="impedance")
+    env.reset(EpisodeConfig(seed=1))
+    p0 = env.tcp_pose()[0].copy()
+    for _ in range(40):
+        env.step([0, 0, 0, 0, -1])
+    assert np.linalg.norm(env.tcp_pose()[0] - p0) < 0.002  # no sag: gravity compensation + settle under torque control
+    assert env.obs().shape == (26,)  # commanded point minus tool appended in impedance mode
+    info = run_expert_episode(env, EpisodeConfig(seed=100000), record=False)
+    assert info["success"]

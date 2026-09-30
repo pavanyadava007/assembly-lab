@@ -14,8 +14,10 @@ demonstration seeds (0-499). 95% intervals are Wilson score intervals.
 | Policy | Nominal perception | Fixture perceived 2 mm off | Final xy error, median (nominal) | Peak contact force, median (nominal) |
 |---|---|---|---|---|
 | Scripted expert (reference, same perception) | 200/200 (100.0%, CI 98.1-100.0) | 165/200 (82.5%, CI 76.6-87.1) | 0.63 mm | 30.7 N |
+| Scripted expert, Cartesian impedance control | 200/200 (100.0%, CI 98.1-100.0) | 194/200 (97.0%, CI 93.6-98.6) | 1.02 mm | 22.1 N |
 | MLP behavior cloning | 179/200 (89.5%, CI 84.5-93.0) | 84/200 (42.0%, CI 35.4-48.9) | 0.62 mm | 30.5 N |
 | MLP behavior cloning without wrist F/T | 156/200 (78.0%, CI 71.8-83.2) | 47/200 (23.5%, CI 18.2-29.8) | 0.76 mm | 24.2 N |
+| MLP behavior cloning, trained and run under impedance control | 51/200 (25.5%, CI 20.0-32.0) | 38/200 (19.0%, CI 14.2-25.0) | 0.78 mm | 23.6 N |
 | ACT (LeRobot) | 9/200 (4.5%, CI 2.4-8.3) | 8/200 (4.0%, CI 2.0-7.7) | 0.58 mm | 74.6 N |
 | ACT, re-plan every action | 10/200 (5.0%, CI 2.7-9.0) | 9/200 (4.5%, CI 2.4-8.3) | 0.39 mm | 63.5 N |
 | Diffusion Policy (LeRobot) | 75/200 (37.5%, CI 31.1-44.4) | 63/200 (31.5%, CI 25.5-38.2) | 0.82 mm | 51.2 N |
@@ -40,3 +42,12 @@ demonstration seeds (0-499). 95% intervals are Wilson score intervals.
 | MLP behavior cloning vs without F/T | 2 mm perception error | 57 | 20 | 2.9e-05 |
 | Diffusion Policy (LeRobot) vs without F/T | nominal | 39 | 19 | 1.2e-02 |
 | Diffusion Policy (LeRobot) vs without F/T | 2 mm perception error | 40 | 29 | 2.3e-01 |
+
+## Position control vs Cartesian impedance control (paired, same 200 seeds, exact McNemar)
+
+| Comparison | Condition | Only impedance succeeded | Only position succeeded | p |
+|---|---|---|---|---|
+| Scripted expert: impedance vs position | nominal | 0 | 0 | 1.0e+00 |
+| Scripted expert: impedance vs position | 2 mm perception error | 33 | 4 | 1.1e-06 |
+| MLP behavior cloning: impedance vs position | nominal | 6 | 134 | 1.4e-32 |
+| MLP behavior cloning: impedance vs position | 2 mm perception error | 25 | 71 | 2.9e-06 |

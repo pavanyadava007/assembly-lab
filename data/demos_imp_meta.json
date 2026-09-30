@@ -1,0 +1,17 @@
+{
+  "episodes_run": 500,
+  "episodes_kept": 497,
+  "frames": 121240,
+  "with_perception_error": 260,
+  "kept_with_recovery": 314,
+  "success_nominal": [
+    240,
+    240
+  ],
+  "success_perturbed": [
+    257,
+    260
+  ],
+  "seconds": 54.6,
+  "source": "scripted expert (assembly_lab/expert.py), not human teleoperation"
+}

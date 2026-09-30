@@ -13,6 +13,8 @@ NAMES = {
     "bc_noft": "MLP behavior cloning without wrist F/T",
     "dp_na2": "Diffusion Policy, re-plan every 2 actions",
     "act_na1": "ACT, re-plan every action",
+    "expert_imp": "Scripted expert, Cartesian impedance control",
+    "bc_imp_imp": "MLP behavior cloning, trained and run under impedance control",
 }
 
 
@@ -65,7 +67,7 @@ def main():
         "| Policy | Nominal perception | Fixture perceived 2 mm off | Final xy error, median (nominal) | Peak contact force, median (nominal) |",
         "|---|---|---|---|---|",
     ]
-    for k in ["expert", "bc", "bc_noft", "act", "act_na1", "dp", "dp_na2", "dp_noft"]:
+    for k in ["expert", "expert_imp", "bc", "bc_noft", "bc_imp_imp", "act", "act_na1", "dp", "dp_na2", "dp_noft"]:
         a, b = load(k, 0.0), load(k, 2.0)
         if not a and not b:
             continue
@@ -100,6 +102,20 @@ def main():
                 n01, n10, p = mcnemar(A, B)
                 cond = "nominal" if off == 0 else "2 mm perception error"
                 lines.append(f"| {NAMES[a_]} vs without F/T | {cond} | {n01} | {n10} | {p:.1e} |")
+    lines += [
+        "",
+        "## Position control vs Cartesian impedance control (paired, same 200 seeds, exact McNemar)",
+        "",
+        "| Comparison | Condition | Only impedance succeeded | Only position succeeded | p |",
+        "|---|---|---|---|---|",
+    ]
+    for a_, b_, label in [("expert_imp", "expert", "Scripted expert"), ("bc_imp_imp", "bc", "MLP behavior cloning")]:
+        for off in (0.0, 2.0):
+            A, B = episodes(a_, off), episodes(b_, off)
+            if A and B:
+                n01, n10, p = mcnemar(A, B)
+                cond = "nominal" if off == 0 else "2 mm perception error"
+                lines.append(f"| {label}: impedance vs position | {cond} | {n01} | {n10} | {p:.1e} |")
     (ROOT / "docs").mkdir(exist_ok=True)
     (ROOT / "docs" / "RESULTS.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))

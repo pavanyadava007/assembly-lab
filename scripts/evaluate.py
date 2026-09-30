@@ -34,14 +34,14 @@ def wilson(k, n, z=1.96):
     return (max(0.0, c - h), min(1.0, c + h))
 
 
-def init(policy, nact=None):
+def init(policy, nact=None, control="position"):
     global _env, _pol
     import torch
 
     torch.set_num_threads(1)
     from assembly_lab.env import AssemblyEnv
 
-    _env = AssemblyEnv()
+    _env = AssemblyEnv(control=control)
     if policy != "expert":
         from assembly_lab.policies import Runner
 
@@ -88,17 +88,21 @@ def main():
     ap.add_argument("--n", type=int, default=200)
     ap.add_argument("--offset", type=float, default=0.0)
     ap.add_argument("--procs", type=int, default=30)
+    ap.add_argument("--control", default="position", choices=["position", "impedance"])
     ap.add_argument("--n-action-steps", type=int, default=None, help="override chunk execution length")
     args = ap.parse_args()
     t0 = time.time()
     jobs = [(SEED0 + i, args.offset) for i in range(args.n)]
-    with get_context("spawn").Pool(args.procs, initializer=init, initargs=(args.policy, args.n_action_steps)) as p:
+    init_args = (args.policy, args.n_action_steps, args.control)
+    with get_context("spawn").Pool(args.procs, initializer=init, initargs=init_args) as p:
         eps = p.map(episode, jobs, chunksize=1)
     k = sum(e["success"] for e in eps)
     lo, hi = wilson(k, len(eps))
     succ = [e for e in eps if e["success"]]
     tag = args.policy + (f"_na{args.n_action_steps}" if args.n_action_steps else "")
+    tag += "_imp" if args.control == "impedance" else ""
     summary = dict(
+        control=args.control,
         policy=tag,
         n_action_steps=args.n_action_steps,
         perception_offset_mm=args.offset * 1000,

@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 NAMES = {
     "expert": "Scripted expert (reference)",
+    "expert_imp": "Scripted expert, Cartesian impedance control",
+    "bc_imp_imp": "MLP behavior cloning under impedance control",
     "bc": "MLP behavior cloning",
     "bc_noft": "MLP behavior cloning, no wrist F/T",
     "act": "ACT (LeRobot)",
@@ -45,7 +47,7 @@ def main():
         shutil.rmtree(SITE)
     (SITE / "media").mkdir(parents=True)
     rows = []
-    for k in ["expert", "bc", "bc_noft", "act", "dp", "dp_noft"]:
+    for k in ["expert", "expert_imp", "bc", "bc_noft", "bc_imp_imp", "act", "dp", "dp_noft"]:
         a, b = s(k, 0.0), s(k, 2.0)
         if a or b:
             rows.append(f"<tr><td>{NAMES[k]}</td>{cell(a)}{cell(b)}</tr>")

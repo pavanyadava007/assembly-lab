@@ -46,13 +46,14 @@ def main():
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--data", default="demos.npz")
     args = ap.parse_args()
     use_ft = not args.no_ft
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
 
-    d = np.load(ROOT / "data" / "demos.npz")
+    d = np.load(ROOT / "data" / args.data)
     obs, act, ep = d["obs"].astype(np.float32), d["act"].astype(np.float32), d["episode"]
     norm = Normalizer(obs.mean(0), obs.std(0))
     on = norm(obs).astype(np.float32)
@@ -113,6 +114,8 @@ def main():
     torch.save(model.state_dict(), out / "model.pt")
     params = sum(p.numel() for p in model.parameters())
     meta = dict(
+        data=args.data,
+        obs_dim=int(obs.shape[1] if use_ft else 17),
         kind=args.kind,
         use_ft=use_ft,
         norm=norm.to_json(),

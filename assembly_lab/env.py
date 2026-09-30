@@ -136,7 +136,7 @@ def _scene_xml(clearance: float) -> str:
 </mujoco>"""
 
 
-def build_model(clearance: float = 0.001) -> mujoco.MjModel:
+def build_model(clearance: float = 0.001, torque: bool = False) -> mujoco.MjModel:
     """Load the Menagerie Panda, add a wrist F/T site + TCP site, and the fixture/part scene."""
     spec_xml = (PANDA_DIR / "panda.xml").read_text()
     # wrist force-torque site between flange and hand, and a TCP site between the fingertips
@@ -151,6 +151,20 @@ def build_model(clearance: float = 0.001) -> mujoco.MjModel:
     spec_xml = spec_xml.replace(
         'gainprm="0.01568627451 0 0" biasprm="0 -100 -10"', 'gainprm="0.1568627451 0 0" biasprm="0 -1000 -30"'
     )
+    if torque:
+        # joint torque control for the impedance controller: the 7 arm actuators become motors (ctrl = torque, N m)
+        import re
+
+        def motor(mt):
+            n = int(mt.group(1))
+            lim = 87 if n <= 4 else 12
+            return (
+                f'<general class="panda" name="actuator{n}" joint="joint{n}" '
+                f'gainprm="1" biasprm="0 0 0" ctrlrange="-{lim} {lim}"/>'
+            )
+
+        pattern = r'<general class="panda" name="actuator([1-7])" joint="joint\1"[^>]*/>'
+        spec_xml = re.sub(pattern, motor, spec_xml, flags=re.S)
     spec_xml = spec_xml.replace('meshdir="assets"', f'meshdir="{PANDA_DIR / "assets"}"')
     tmp = PANDA_DIR / f"_panda_ft_{os.getpid()}.xml"  # per process: parallel workers must not share it
     tmp.write_text(spec_xml)
@@ -186,8 +200,10 @@ class AssemblyEnv:
     obs_dim = 23
     act_dim = 5  # dx, dy, dz, dyaw, gripper (1 = close, -1 = open)
 
-    def __init__(self, clearance: float = 0.001):
-        self.model = build_model(clearance)
+    def __init__(self, clearance: float = 0.001, control: str = "position"):
+        assert control in ("position", "impedance")
+        self.control = control
+        self.model = build_model(clearance, torque=(control == "impedance"))
         self.data = mujoco.MjData(self.model)
         m = self.model
         self.clearance = clearance
@@ -231,7 +247,12 @@ class AssemblyEnv:
         ang = rng.uniform(0, 2 * np.pi)
         self.fix_obs_offset = cfg.perception_offset * np.array([np.cos(ang), np.sin(ang)])
         mujoco.mj_forward(m, d)
+        # hold the home tool pose while the scene settles (for the torque model, ctrl must be torques, not angles)
+        self.target_pos = d.site_xpos[self.tcp].copy()
+        self.target_yaw = yaw_of(d.site_xmat[self.tcp])
         for _ in range(100):  # settle
+            if self.control == "impedance":
+                d.ctrl[:7] = self._impedance_torque()
             mujoco.mj_step(m, d)
         self.target_pos = d.site_xpos[self.tcp].copy()
         self.target_yaw = yaw_of(d.site_xmat[self.tcp])
@@ -298,10 +319,12 @@ class AssemblyEnv:
         self.target_pos[:2] = np.clip(self.target_pos[:2], [0.25, -0.45], [0.8, 0.45])
         self.target_yaw = wrap(self.target_yaw + a[3] * MAX_DYAW)
         self.grip_cmd = a[4]
-        q = self._ik(self.target_pos, self.target_yaw)
-        d.ctrl[:7] = q
+        if self.control == "position":
+            d.ctrl[:7] = self._ik(self.target_pos, self.target_yaw)
         d.ctrl[7] = 0.0 if self.grip_cmd > 0 else 255.0
         for _ in range(SUBSTEPS):
+            if self.control == "impedance":
+                d.ctrl[:7] = self._impedance_torque()
             mujoco.mj_step(m, d)
             f = np.linalg.norm(self._contact_force_ecu_fixture())
             self.peak_force = max(self.peak_force, f)
@@ -311,6 +334,36 @@ class AssemblyEnv:
         succ = self.success()
         done = succ or self.t >= MAX_STEPS
         return self.obs(), succ, done
+
+    # Cartesian impedance gains (N/m, N m/rad): laterally softer so a chamfer can push the part into the pocket
+    K_IMP = np.array([800.0, 800.0, 1500.0, 60.0, 60.0, 60.0])
+    ZETA = 1.0
+    K_NULL = 10.0
+
+    def _impedance_torque(self):
+        """tau = J^T (K e - D xdot) + gravity/Coriolis compensation + null-space posture torque (as in Franka's
+        cartesian_impedance_example), evaluated every physics step (500 Hz)."""
+        m, d = self.model, self.data
+        if not hasattr(self, "_jacp"):
+            self._jacp = np.zeros((3, m.nv))
+            self._jacr = np.zeros((3, m.nv))
+            self._D = 2 * self.ZETA * np.sqrt(self.K_IMP)
+        mujoco.mj_jacSite(m, d, self._jacp, self._jacr, self.tcp)
+        J = np.vstack([self._jacp[:, self.arm_dadr], self._jacr[:, self.arm_dadr]])
+        cur_p = d.site_xpos[self.tcp]
+        cur_R = d.site_xmat[self.tcp].reshape(3, 3)
+        y = self.target_yaw
+        tR = np.array([[np.cos(y), -np.sin(y), 0], [np.sin(y), np.cos(y), 0], [0, 0, 1]]) @ np.diag([1, -1, -1])
+        e_r = 0.5 * sum(np.cross(cur_R[:, i], tR[:, i]) for i in range(3))
+        e = np.concatenate([self.target_pos - cur_p, e_r])
+        qd = d.qvel[self.arm_dadr]
+        F = self.K_IMP * e - self._D * (J @ qd)
+        tau = J.T @ F + d.qfrc_bias[self.arm_dadr]
+        q = d.qpos[self.arm_qadr]
+        N = np.eye(7) - J.T @ np.linalg.pinv(J.T)
+        tau += N @ (self.K_NULL * (self.home[:7] - q) - 2 * np.sqrt(self.K_NULL) * qd)
+        lim = np.array([87, 87, 87, 87, 12, 12, 12.0])
+        return np.clip(tau, -lim, lim)
 
     # ------------------------------------------------------------------ state
     def tcp_pose(self):
@@ -356,6 +409,9 @@ class AssemblyEnv:
                 ep_o - tp,  # 14:17 part relative to tool
                 w / np.array([20, 20, 20, 2, 2, 2]),  # 17:23 wrist wrench, scaled
             ]
+            # impedance mode only: commanded point minus tool (23:26, cm). A compliant arm lags its command and a real
+            # Franka reports the commanded pose, so the policy sees what the controller is pulling towards.
+            + ([(self.target_pos - tp) / 0.01] if self.control == "impedance" else [])
         ).astype(np.float32)
 
     def _contact_force_ecu_fixture(self):

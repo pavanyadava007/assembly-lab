@@ -18,12 +18,18 @@ from assembly_lab.env import AssemblyEnv, EpisodeConfig
 from assembly_lab.expert import run_expert_episode
 
 _env = None
+CONTROL = "position"
+
+
+def _set_control(c):
+    global CONTROL
+    CONTROL = c
 
 
 def work(seed):
     global _env
     if _env is None:
-        _env = AssemblyEnv()
+        _env = AssemblyEnv(control=CONTROL)
     rng = np.random.default_rng(seed + 55_555)
     off = float(rng.uniform(0, 0.0025)) if rng.random() < 0.5 else 0.0
     obs_ep, act_ep, info = run_expert_episode(_env, EpisodeConfig(seed=seed, perception_offset=off))
@@ -32,15 +38,17 @@ def work(seed):
 
 if __name__ == "__main__":
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 500
+    CONTROL = sys.argv[2] if len(sys.argv) > 2 else "position"
+    suffix = "" if CONTROL == "position" else "_imp"
     t0 = time.time()
-    with Pool(30) as p:
+    with Pool(30, initializer=_set_control, initargs=(CONTROL,)) as p:
         res = p.map(work, range(n), chunksize=4)
     keep = [r for r in res if r[2]["success"]]
     obs = np.concatenate([r[0] for r in keep])
     act = np.concatenate([r[1] for r in keep])
     ep = np.concatenate([np.full(len(r[0]), i) for i, r in enumerate(keep)])
     root = Path(__file__).resolve().parents[1]
-    np.savez_compressed(root / "data" / "demos.npz", obs=obs, act=act, episode=ep)
+    np.savez_compressed(root / "data" / f"demos{suffix}.npz", obs=obs, act=act, episode=ep)
     infos = [r[2] for r in res]
     meta = dict(
         episodes_run=n,
@@ -59,5 +67,5 @@ if __name__ == "__main__":
         seconds=round(time.time() - t0, 1),
         source="scripted expert (assembly_lab/expert.py), not human teleoperation",
     )
-    (root / "data" / "demos_meta.json").write_text(json.dumps(meta, indent=2))
+    (root / "data" / f"demos{suffix}_meta.json").write_text(json.dumps(meta, indent=2))
     print(json.dumps(meta, indent=2))
